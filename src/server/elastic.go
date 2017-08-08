@@ -74,10 +74,20 @@ func createIndex(client *elastic.Client) error {
 	for _, lang := range Languages {
 		mappings["hotel-"+lang] = H{
 			"properties": H{
-				"name":     H{"type": "text"},
 				"address":  H{"type": "text"},
 				"summary":  H{"type": "text"},
 				"location": H{"type": "geo_point"},
+				"name": H{
+					"type": "text",
+					"fields": H{
+						// extra sorting subfield
+						// https://www.elastic.co/guide/en/elasticsearch/guide/current/multi-fields.html
+						"raw": H{
+							"type":  "string",
+							"index": "not_analyzed",
+						},
+					},
+				},
 			},
 		}
 	}

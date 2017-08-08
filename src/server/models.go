@@ -1,5 +1,9 @@
 package main
 
+import (
+	"time"
+)
+
 // Languages is the list of languages add to Elasticsearch
 var Languages = []string{"ru", "en"}
 
@@ -22,6 +26,8 @@ type Hotel struct {
 
 // Room definition (one room can haz multiple beds)
 type Room struct {
+	ID        string `json:"id"`
 	MaxPeople int    `json:"max_people"`
 	Name      string `json:"name"`
+	DatesFree time.Time
 }

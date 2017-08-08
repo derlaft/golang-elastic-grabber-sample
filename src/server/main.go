@@ -33,7 +33,7 @@ func createEntries(db *elastic.Client) {
 			ctx, cancel := defaultCtx()
 			defer cancel()
 
-			_, err := db.
+			res, err := db.
 				Index().Index(hotelIndex).
 				Type(fmt.Sprintf("hotel-%v", lang)).
 				Id(hotel.HotelID).
@@ -41,6 +41,10 @@ func createEntries(db *elastic.Client) {
 				Do(ctx)
 			if err != nil {
 				log.Fatal(err)
+			}
+
+			if !res.Created {
+				log.Fatal(fmt.Errorf("Could not create hotel with id=%v", hotel.HotelID))
 			}
 
 			log.Printf("Added hotel with id=%v (%v)", hotel.HotelID, lang)

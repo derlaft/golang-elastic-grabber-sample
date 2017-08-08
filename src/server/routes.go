@@ -67,6 +67,10 @@ func (s *server) search(c *gin.Context) {
 
 	search := s.db.Search().
 		Index(hotelIndex).
+		Sort("name.raw", true).
+		// only first page, a real app should ofc
+		// implement pagination
+		Size(20).
 		FetchSourceContext(
 			// retrieve only needed fields
 			elastic.NewFetchSourceContext(true).Include("name", "id"),
@@ -87,6 +91,7 @@ func (s *server) search(c *gin.Context) {
 
 	case req.Location != nil && req.Radius > "":
 
+		// filter by geo-position
 		filter := elastic.NewGeoDistanceQuery("location").
 			Point(req.Location.Lat, req.Location.Lon).
 			Distance(req.Radius)
