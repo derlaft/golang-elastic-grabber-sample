@@ -1,0 +1,6 @@
+version: "2"
+services:
+    db:
+        image: elasticsearch:alpine
+        ports:
+            - "127.0.0.1:9200:9200"
