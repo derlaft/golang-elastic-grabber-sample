@@ -16,6 +16,11 @@ const hotelIndex = "booking"
 // dynamic-json code more befautiful
 type H map[string]interface{}
 
+var analyzers = map[string]string{
+	"ru": "russian",
+	"en": "english",
+}
+
 func defaultCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second*15)
 }
@@ -72,14 +77,27 @@ func createIndex(client *elastic.Client) error {
 
 	mappings := H{}
 	for _, lang := range Languages {
+
+		// language-specific stemmed field
+		var (
+			stemmedName     = "stemmed-" + lang
+			stemmedSubfield = H{
+				stemmedName: H{
+					"type":     "string",
+					"analyzer": analyzers[lang],
+				},
+			}
+		)
+
 		mappings["hotel-"+lang] = H{
 			"properties": H{
-				"address":  H{"type": "text"},
-				"summary":  H{"type": "text"},
+				"address":  H{"type": "string", "fields": stemmedSubfield},
+				"summary":  H{"type": "string", "fields": stemmedSubfield},
 				"location": H{"type": "geo_point"},
 				"name": H{
-					"type": "text",
+					"type": "string",
 					"fields": H{
+						stemmedName: stemmedSubfield[stemmedName],
 						// extra sorting subfield
 						// https://www.elastic.co/guide/en/elasticsearch/guide/current/multi-fields.html
 						"raw": H{

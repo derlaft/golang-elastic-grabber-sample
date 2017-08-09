@@ -86,7 +86,7 @@ func (s *server) search(c *gin.Context) {
 	case req.Name > "":
 		// search by hotel name
 		search = search.Query(
-			elastic.NewMatchQuery("name", req.Name),
+			elastic.NewMultiMatchQuery(req.Name, "name", "name.stemmed-*"),
 		)
 
 	case req.Location != nil && req.Radius > "":
@@ -105,7 +105,7 @@ func (s *server) search(c *gin.Context) {
 	case req.Address > "":
 		// search by hotel addr
 		search = search.Query(
-			elastic.NewMatchQuery("address", req.Address),
+			elastic.NewMultiMatchQuery(req.Address, "address", "address.stemmed-*"),
 		)
 
 	default:
