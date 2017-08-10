@@ -1,11 +1,8 @@
-package main
+package models
 
 import (
 	"time"
 )
-
-// Languages is the list of languages add to Elasticsearch
-var Languages = []string{"ru", "en"}
 
 // Location of a hotel
 type Location struct {

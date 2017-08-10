@@ -8,7 +8,7 @@
 1. Восстановить зависимости: `gb vendor restore`
 1. Собрать проект: `gb build`
 1. Запустить elasticsearch (`docker-compose up -d db`)
-1. Запуск: `./bin/server`
+1. Запуск: `./bin/server`, `./bin/fetcher`
 
 
 ## Описание методов
@@ -19,9 +19,9 @@
 
         ``` curl -d '{"name": "Spa"}' localhost:8081/search | jq . ```
 
-    * Поиск по координатам:
+    * Поиск по координатам (радиус -- в метрах):
 
-        ``` curl -d '{"location": {"lat": 53.8077280023929, "lon": 58.6349773406982}, "radius": "150m"}' localhost:8081/search | jq . ```
+        ``` curl -d '{"location": {"lat": 53.8077280023929, "lon": 58.6349773406982}, "radius": "150"}' localhost:8081/search | jq . ```
 
     * Поиск по адресу: 
 

@@ -1,6 +1,7 @@
-package main
+package db
 
 import (
+	"config"
 	"context"
 	"fmt"
 	"log"
@@ -10,7 +11,10 @@ import (
 	"gopkg.in/olivere/elastic.v5"
 )
 
-const hotelIndex = "booking"
+// Languages is the list of languages add to Elasticsearch
+var Languages = []string{"ru", "en"}
+
+const HotelIndex = "booking"
 
 // H is a syntax sugar to make
 // dynamic-json code more befautiful
@@ -21,18 +25,28 @@ var analyzers = map[string]string{
 	"en": "english",
 }
 
-func defaultCtx() (context.Context, context.CancelFunc) {
+func DefaultCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second*15)
 }
 
-func connect(connect string) (*elastic.Client, error) {
-	client, err := elastic.NewClient(
-		elastic.SetURL(connect),
-		elastic.SetHealthcheckInterval(10*time.Second),
-		// @TODO delete this
-		elastic.SetErrorLog(log.New(os.Stderr, "ELASTIC ", log.LstdFlags)),
-		elastic.SetInfoLog(log.New(os.Stdout, "", log.LstdFlags)),
-	)
+func Connect(cfg *config.DatabaseConfig) (*elastic.Client, error) {
+
+	options := []elastic.ClientOptionFunc{
+		elastic.SetHealthcheckInterval(10 * time.Second),
+	}
+
+	for i := range cfg.Shards {
+		options = append(options, elastic.SetURL(cfg.Shards[i]))
+	}
+
+	if cfg.ElasticDebug {
+		options = append(options,
+			elastic.SetErrorLog(log.New(os.Stderr, "ELASTIC ", log.LstdFlags)),
+			elastic.SetInfoLog(log.New(os.Stdout, "", log.LstdFlags)),
+		)
+	}
+
+	client, err := elastic.NewClient(options...)
 	if err != nil {
 		return nil, err
 	}
@@ -42,16 +56,22 @@ func connect(connect string) (*elastic.Client, error) {
 		return nil, err
 	}
 
-	if indexExists {
-		_, err := client.DeleteIndex(hotelIndex).Do(context.Background())
+	// Delete index if we want to
+	if indexExists && cfg.DropOnStartup {
+		_, err := client.DeleteIndex(HotelIndex).Do(context.Background())
 		if err != nil {
 			return nil, err
 		}
+
+		indexExists = false
 	}
 
-	err = createIndex(client)
-	if err != nil {
-		return nil, err
+	// Re-create it
+	if !indexExists {
+		err = createIndex(client)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return client, nil
@@ -59,10 +79,10 @@ func connect(connect string) (*elastic.Client, error) {
 
 func isIndexExists(client *elastic.Client) (bool, error) {
 
-	ctx, cancel := defaultCtx()
+	ctx, cancel := DefaultCtx()
 	defer cancel()
 
-	exists, err := client.IndexExists(hotelIndex).Do(ctx)
+	exists, err := client.IndexExists(HotelIndex).Do(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -72,7 +92,7 @@ func isIndexExists(client *elastic.Client) (bool, error) {
 
 func createIndex(client *elastic.Client) error {
 
-	ctx, cancel := defaultCtx()
+	ctx, cancel := DefaultCtx()
 	defer cancel()
 
 	mappings := H{}
@@ -110,7 +130,7 @@ func createIndex(client *elastic.Client) error {
 		}
 	}
 
-	index, err := client.CreateIndex(hotelIndex).BodyJson(H{
+	index, err := client.CreateIndex(HotelIndex).BodyJson(H{
 		"mappings": mappings,
 	}).Do(ctx)
 

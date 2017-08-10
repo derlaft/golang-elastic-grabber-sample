@@ -1,7 +1,9 @@
 package main
 
 import (
+	"db"
 	"fmt"
+	"models"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -34,7 +36,7 @@ var (
 type HotelID string
 
 type hotelParseResult struct {
-	h   map[string]*Hotel
+	h   map[string]*models.Hotel
 	err error
 }
 
@@ -185,15 +187,15 @@ func trim(a string) string {
 // Prase grabs documents from the booking
 // and returns multi-language indices in
 // map: lang_name -> hotel info
-func (h HotelID) Parse() (map[string]*Hotel, error) {
+func (h HotelID) Parse() (map[string]*models.Hotel, error) {
 
 	var (
-		result   = map[string]*Hotel{}
+		result   = map[string]*models.Hotel{}
 		once     sync.Once
 		lat, lon float64
 	)
 
-	for _, lang := range Languages {
+	for _, lang := range db.Languages {
 
 		// Load HTML
 		doc, err := goquery.NewDocument(h.GetURL(lang))
@@ -244,7 +246,7 @@ func (h HotelID) Parse() (map[string]*Hotel, error) {
 			})
 
 		// Process rooms
-		var rooms []Room
+		var rooms []models.Room
 		doc.Find(".roomstable").Find("tbody").First().Children().
 			Each(func(_ int, row *goquery.Selection) {
 
@@ -253,18 +255,18 @@ func (h HotelID) Parse() (map[string]*Hotel, error) {
 					return
 				}
 
-				rooms = append(rooms, Room{
+				rooms = append(rooms, models.Room{
 					MaxPeople: row.Find("i.bicon-occupancy").Size(),
 					Name:      trim(row.Find("a.togglelink").Text()),
 				})
 			})
 
-		result[lang] = &Hotel{
+		result[lang] = &models.Hotel{
 			HotelID: string(h),
 			Name:    trim(hotelName),
 			Address: trim(addrText),
 			Summary: trim(summary),
-			Location: Location{
+			Location: models.Location{
 				Lat: lat,
 				Lon: lon,
 			},

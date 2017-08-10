@@ -1,0 +1,5 @@
+database_config:
+    shards:
+        - "http://127.0.0.1:9200"
+    drop_on_startup: true
+listen: "127.0.0.1:8081"

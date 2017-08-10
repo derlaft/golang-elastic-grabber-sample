@@ -1,8 +1,11 @@
 package main
 
 import (
+	"db"
 	"encoding/json"
 	"fmt"
+	"log"
+	"models"
 	"net/http"
 	"reflect"
 
@@ -21,13 +24,15 @@ type SearchRequest struct {
 	Language string `json:"language"`
 
 	// Search by coordinates && radius
-	Location *Location `json:"location"`
-	// distance with unit name --
-	// for ex. -- 20m, 10km
-	Radius string `json:"radius"`
+	Location *models.Location `json:"location"`
+	// distance in meters
+	Radius uint `json:"radius"`
 
 	// Search by location name
 	Address string `json:"address"`
+
+	// Result page (0 is first one, 1 -- second, ...)
+	Page uint
 }
 
 type HotelResultEntry struct {
@@ -51,9 +56,11 @@ type GetRequest struct {
 }
 
 type GetResult struct {
-	NotFound bool   `json:"not_found,omitempty"`
-	Hotel    *Hotel `json:"result"`
+	NotFound bool          `json:"not_found,omitempty"`
+	Hotel    *models.Hotel `json:"result"`
 }
+
+const PerPage = 10
 
 func (s *server) search(c *gin.Context) {
 
@@ -61,16 +68,17 @@ func (s *server) search(c *gin.Context) {
 	var req SearchRequest
 	err := c.BindJSON(&req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
+		log.Println(err)
+		c.JSON(http.StatusBadRequest, ErrorResponse{"decode request error"})
 		return
 	}
 
 	search := s.db.Search().
-		Index(hotelIndex).
+		Index(db.HotelIndex).
 		Sort("name.raw", true).
 		// only first page, a real app should ofc
 		// implement pagination
-		Size(20).
+		From(int(req.Page * PerPage)).Size(PerPage).
 		FetchSourceContext(
 			// retrieve only needed fields
 			elastic.NewFetchSourceContext(true).Include("name", "id"),
@@ -80,46 +88,58 @@ func (s *server) search(c *gin.Context) {
 		search = search.Type(fmt.Sprintf("hotel-%v", req.Language))
 	}
 
-	// decide what to do
-	switch {
+	query := elastic.NewBoolQuery()
 
-	case req.Name > "":
+	// decide what to do
+
+	if req.Name > "" {
 		// search by hotel name
-		search = search.Query(
+		query = query.Must(
 			elastic.NewMultiMatchQuery(req.Name, "name", "name.stemmed-*"),
 		)
+	}
 
-	case req.Location != nil && req.Radius > "":
+	if req.Location != nil && req.Radius > 0 {
+
+		// verify values first
+		var (
+			lat = req.Location.Lat
+			lon = req.Location.Lon
+		)
+
+		if lat <= -90 || lat >= 90 || lon <= -180 || lon >= 180 {
+			c.JSON(http.StatusBadRequest, ErrorResponse{"Invalid location"})
+			return
+		}
+
+		if req.Radius > 1000 {
+			c.JSON(http.StatusBadRequest, ErrorResponse{"Radius is too huge"})
+			return
+		}
 
 		// filter by geo-position
 		filter := elastic.NewGeoDistanceQuery("location").
-			Point(req.Location.Lat, req.Location.Lon).
-			Distance(req.Radius)
+			Point(lat, lon).
+			Distance(fmt.Sprintf("%dm", req.Radius))
 
-		query := elastic.NewBoolQuery().
-			Must(elastic.NewMatchAllQuery()).
-			Filter(filter)
-
-		search = search.Query(query)
-
-	case req.Address > "":
-		// search by hotel addr
-		search = search.Query(
-			elastic.NewMultiMatchQuery(req.Address, "address", "address.stemmed-*"),
-		)
-
-	default:
-		c.JSON(http.StatusBadRequest, ErrorResponse{fmt.Sprintf("No search parameters")})
-		return
+		query = query.Filter(filter)
 	}
 
-	ctx, cancel := defaultCtx()
+	if req.Address > "" {
+		// search by hotel addr
+		query = query.Must(
+			elastic.NewMultiMatchQuery(req.Address, "address", "address.stemmed-*"),
+		)
+	}
+
+	ctx, cancel := db.DefaultCtx()
 	defer cancel()
 
 	// perform the request
-	res, err := search.Do(ctx)
+	res, err := search.Query(query).Do(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{err.Error()})
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{"Database error"})
 		return
 	}
 
@@ -145,7 +165,8 @@ func (s *server) get(c *gin.Context) {
 	var req GetRequest
 	err := c.BindJSON(&req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
+		log.Println(err)
+		c.JSON(http.StatusBadRequest, ErrorResponse{"Decode request error"})
 		return
 	}
 
@@ -154,25 +175,26 @@ func (s *server) get(c *gin.Context) {
 		req.Language = "en"
 	}
 
-	ctx, cancel := defaultCtx()
+	ctx, cancel := db.DefaultCtx()
 	defer cancel()
 
 	// get by ID
 	res, err := s.db.Get().
-		Index(hotelIndex).
+		Index(db.HotelIndex).
 		Type(fmt.Sprintf("hotel-%v", req.Language)).
 		Id(req.ID).Do(ctx)
-
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
+		log.Println(err)
+		c.JSON(http.StatusBadRequest, ErrorResponse{"Database error"})
 		return
 	}
 
 	// decode result
-	var hotel Hotel
+	var hotel models.Hotel
 	err = json.Unmarshal(*res.Source, &hotel)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{err.Error()})
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{"Decode result error"})
 		return
 	}
 
